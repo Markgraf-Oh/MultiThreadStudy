@@ -11,19 +11,28 @@
 #include <map>
 #include <string>
 
-//thread와 promise, future을 이용해 uniform distribution을 구합니다.
+/**thread와 promise, future을 이용해 uniform distribution을 구합니다.
+* achive uniform distribution by using thread, promise, future.
+*/
 void test1();
 
-//thread와 promise, future, mutex를 이용해 각 스레드의 연산결과를 단일 변수에 저장한다.
+/**thread와 promise, future, mutex를 이용해 각 스레드의 연산결과를 단일 변수에 저장한다.
+* by using thread, promise, future, mutex, saves each threads calculated result in the same variable.
+*/
 void test2();
 
+//testing std::async
+void test3();
+
 void GetUniformDistribution(int thread_id, unsigned int max_number, unsigned int refeat_time,  std::promise<std::vector<double>> promise, std::mutex &cout_mutex);
+
+std::vector<double> GetUniformDistribution2(int thread_id, unsigned int max_number, unsigned int refeat_time, std::mutex &cout_mutex);
 
 void GetNomalDistribution(int thread_id, float mean, float distribution, unsigned int min_refeat_time, unsigned int max_refeat_time, std::map<float, double>& result_histogram, std::mutex & result_mutex);
 
 int main()
 {
-    test2();
+    test3();
 }
 
 void test1()
@@ -113,6 +122,46 @@ void test2()
     }
 }
 
+
+void test3()
+{
+    std::mutex cout_mutex;
+    const unsigned int number_of_threads = 10;
+    const unsigned int max_number = 100;
+    const unsigned int refeat_time = 100;
+
+    std::vector< std::future<std::vector<double>> > futures;
+
+    for(int i = 0; i < number_of_threads; i++)
+    {
+        futures.emplace_back(std::async(std::launch::async, GetUniformDistribution2, i, max_number, refeat_time, std::ref(cout_mutex)));
+    }
+
+    std::vector<double> total(max_number + 1, 0.0);
+    for(int i = 0; i < number_of_threads; i++)
+    {
+        std::vector<double> thread_result = futures[i].get();
+        for(int j = 0; j < max_number + 1; j++)
+        {
+            total[j] += thread_result[j];
+        }
+    }
+    for(int j = 0; j < max_number + 1; j++)
+    {
+        total[j] /= number_of_threads;
+    }
+
+    std::cout << std::string(30, '*') << std::endl;
+
+    double sum = 0.0;
+    for(int i = 0; i < max_number + 1; i++)
+    {
+        sum += total[i];
+        std::cout << std::setw(7) << total[i] << ' ' << std::string(int(total[i] / 0.001), '*') << "\n";
+    }
+    std::cout << "sum of all distribution : " << sum << std::endl;
+}
+
 void GetUniformDistribution(int thread_id, unsigned int max_number, unsigned int refeat_time, std::promise<std::vector<double>> promise, std::mutex &cout_mutex)
 {
     cout_mutex.lock();
@@ -134,6 +183,30 @@ void GetUniformDistribution(int thread_id, unsigned int max_number, unsigned int
     cout_mutex.lock();
     std::cout << "thread " << thread_id << " completed\n";
     cout_mutex.unlock();
+}
+
+
+std::vector<double> GetUniformDistribution2(int thread_id, unsigned int max_number, unsigned int refeat_time, std::mutex & cout_mutex)
+{
+    cout_mutex.lock();
+    std::cout << "thread " << thread_id << " started\n";
+    cout_mutex.unlock();
+    std::random_device rande;
+    std::minstd_rand generator_basic(rande());
+    std::uniform_int_distribution<int> dist_uniform_int(0, max_number);
+    std::vector<double> result(max_number + 1, 0.0);
+    for(int i = 0; i < refeat_time; i++)
+    {
+        result[dist_uniform_int(generator_basic)] += 1.0;
+    }
+    for(int i = 0; i < max_number + 1; i++)
+    {
+        result[i] /= (double)refeat_time;
+    }
+    cout_mutex.lock();
+    std::cout << "thread " << thread_id << " completed\n";
+    cout_mutex.unlock();
+    return result;
 }
 
 void GetNomalDistribution(int thread_id, float mean, float distribution, unsigned int min_refeat_time, unsigned int max_refeat_time, std::map<float, double>& result_histogram, std::mutex & result_mutex)
